@@ -2,7 +2,8 @@
 """Ежедневная публикация статьи в сообщество ВКонтакте.
 
 Ключи берутся из переменных окружения VK_TOKEN (ключ сообщества) и VK_GROUP_ID (число).
-Статья дня выбирается по той же формуле, что и в Telegram: номер = (дни от 2026-09-10) mod 145 + 1.
+Статья дня выбирается по той же формуле, что и в Telegram: номер = (дни от 2026-09-10) mod N + 1,
+где N — число статей в articles.md.
 """
 import argparse
 import datetime
@@ -18,7 +19,6 @@ import uuid
 API = "https://api.vk.com/method/"
 API_VERSION = "5.199"
 START = datetime.date(2026, 9, 10)
-TOTAL = 145
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 FOOTER = (
     "— Ремонт М2 · Калининград\n"
@@ -29,10 +29,16 @@ FOOTER = (
 MAX_LEN = 15000
 
 
+def total_articles():
+    """Считаем по файлу: банк пополняется, а счётчик не должен устаревать."""
+    text = open(os.path.join(ROOT, "articles.md"), encoding="utf-8").read()
+    return len(re.findall(r"(?m)^##\s+\d+\.", text))
+
+
 def article_number(today=None):
     today = today or datetime.datetime.now(datetime.timezone.utc).date()
     days = max((today - START).days, 0)
-    return days % TOTAL + 1
+    return days % total_articles() + 1
 
 
 def read_article(number):
@@ -74,9 +80,17 @@ def clean_body(lines):
     return text
 
 
-def build_message(title, body_text):
+def article_link(number):
+    """Адрес статьи на сайте: ссылка на конкретный материал, а не просто на домен."""
+    path = os.path.join(ROOT, "links.json")
+    if not os.path.exists(path):
+        return ""
+    return json.load(open(path, encoding="utf-8")).get(str(number), "")
+
+
+def build_message(title, body_text, link=""):
     head = f"{title}\n\n"
-    tail = f"\n\n{FOOTER}"
+    tail = (f"\n\nЧитать на сайте: {link}" if link else "") + f"\n\n{FOOTER}"
     room = MAX_LEN - len(head) - len(tail)
     if len(body_text) > room:
         paras = body_text.split("\n\n")
@@ -142,7 +156,7 @@ def main():
 
     number = args.number or article_number()
     title, body = read_article(number)
-    message = build_message(title, clean_body(body))
+    message = build_message(title, clean_body(body), article_link(number))
     nnn = f"{number:03d}"
     photos = [os.path.join(ROOT, "images", f"{nnn}-{kind}.png") for kind in ("cover", "lifehack", "summary")]
 
