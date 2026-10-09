@@ -125,6 +125,39 @@ def already_posted(token, group_id, title):
     return any(head in (v.get("title", "") + " " + v.get("description", "")).lower() for v in items)
 
 
+def publish(token, group_id, number, force=False, video_only=False):
+    """Загрузка одного ролика. Вызывается и из post_vk.py, чтобы пост и клип выходили вместе."""
+    title = article_title(number)
+    path = clip_path(number)
+    if not os.path.exists(path):
+        raise SystemExit(f"Нет файла ролика: {path}")
+    if not force and already_posted(token, group_id, title):
+        print(f"RESULT: пропуск — ролик №{number} «{title}» уже загружен")
+        return
+
+    description = build_description(title, article_link(number))
+    attempts = [
+        ("клип", lambda: post_as_clip(token, group_id, path, description)),
+        ("видео", lambda: post_as_video(token, group_id, path, title, description)),
+    ]
+    if video_only:
+        attempts = attempts[1:]
+    last_error = ""
+    for label, send in attempts:
+        try:
+            kind, owner, vid, res = send()
+            print(f"RESULT: ролик №{number} «{title}» загружен как {kind}")
+            if vid:
+                print(f"Ссылка: https://vk.com/video{owner}_{vid}")
+            if isinstance(res, dict) and res.get("error"):
+                print(f"Ответ загрузчика: {res}")
+            return
+        except Exception as e:  # noqa: BLE001
+            last_error = str(e)
+            print(f"Через {label} не вышло: {e}")
+    raise SystemExit(f"Не удалось загрузить ролик: {last_error}")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true", help="показать, что будет опубликовано")
@@ -168,32 +201,7 @@ def main():
         print("Если клипы недоступны — ролики пойдут через video.save, это рабочий запасной путь.")
         return
 
-    if not os.path.exists(path):
-        raise SystemExit(f"Нет файла ролика: {path}")
-    if not args.force and already_posted(token, group_id, title):
-        print(f"RESULT: пропуск — ролик №{number} «{title}» уже загружен")
-        return
-
-    attempts = [
-        ("клип", lambda: post_as_clip(token, group_id, path, description)),
-        ("видео", lambda: post_as_video(token, group_id, path, title, description)),
-    ]
-    if args.video_only:
-        attempts = attempts[1:]
-    last_error = ""
-    for label, send in attempts:
-        try:
-            kind, owner, vid, res = send()
-            print(f"RESULT: ролик №{number} «{title}» загружен как {kind}")
-            if vid:
-                print(f"Ссылка: https://vk.com/video{owner}_{vid}")
-            if isinstance(res, dict) and res.get("error"):
-                print(f"Ответ загрузчика: {res}")
-            return
-        except Exception as e:  # noqa: BLE001
-            last_error = str(e)
-            print(f"Через {label} не вышло: {e}")
-    raise SystemExit(f"Не удалось загрузить ролик: {last_error}")
+    publish(token, group_id, number, force=args.force, video_only=args.video_only)
 
 
 if __name__ == "__main__":

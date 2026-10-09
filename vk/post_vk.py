@@ -152,6 +152,7 @@ def main():
     ap.add_argument("--number", type=int, help="номер статьи вместо статьи дня")
     ap.add_argument("--no-photos", action="store_true", help="публиковать только текст")
     ap.add_argument("--force", action="store_true", help="публиковать, даже если статья уже есть на стене")
+    ap.add_argument("--no-clip", action="store_true", help="не выкладывать ролик того же дня")
     args = ap.parse_args()
 
     number = args.number or article_number()
@@ -213,6 +214,14 @@ def main():
     where = f"с {len(attachments)} картинками" if attachments else "без картинок" + (f" (причина: {note})" if note else "")
     print(f"RESULT: опубликована статья №{number} «{title}» {where}")
     print(f"Ссылка: https://vk.com/wall-{group_id}_{post_id}")
+
+    # ролик того же номера — отдельным шагом: пост уже опубликован, и его неудача не отменяет
+    if not args.no_clip:
+        try:
+            import post_clip
+            post_clip.publish(token, group_id, number, force=args.force)
+        except Exception as e:  # noqa: BLE001
+            print(f"Ролик не загрузился: {e}")
 
 
 if __name__ == "__main__":
