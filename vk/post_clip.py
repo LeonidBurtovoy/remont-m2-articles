@@ -100,16 +100,26 @@ def upload(url, field, path):
         return {"raw": raw[:300]}
 
 
+def media_token(fallback=""):
+    """Токен для загрузки медиа.
+
+    Ключу сообщества ВК отказывает в загрузке медиа на стену (ошибка 27,
+    «method is unavailable with group auth»). Для клипов и видео берём
+    пользовательский токен, если он задан, иначе пробуем ключ сообщества.
+    """
+    return os.environ.get("VK_USER_TOKEN", "").strip() or fallback
+
+
 def post_as_clip(token, group_id, path, description):
     size_kb = max(1, os.path.getsize(path) // 1024)
-    created = vk("shortVideo.create", token, group_id=group_id,
+    created = vk("shortVideo.create", media_token(token), group_id=group_id,
                  file_size=size_kb, description=description)
     res = upload(created["upload_url"], "file", path)
     return "клип", created.get("owner_id", -group_id), created.get("video_id"), res
 
 
 def post_as_video(token, group_id, path, title, description):
-    saved = vk("video.save", token, group_id=group_id, name=title[:128],
+    saved = vk("video.save", media_token(token), group_id=group_id, name=title[:128],
                description=description, wallpost=0)
     res = upload(saved["upload_url"], "video_file", path)
     return "видео сообщества", saved.get("owner_id", -group_id), saved.get("video_id"), res
@@ -117,7 +127,7 @@ def post_as_video(token, group_id, path, title, description):
 
 def already_posted(token, group_id, title):
     try:
-        items = vk("video.get", token, owner_id=-group_id, count=30)["items"]
+        items = vk("video.get", media_token(token), owner_id=-group_id, count=30)["items"]
     except Exception as e:  # noqa: BLE001
         print(f"Проверка дублей пропущена: {e}")
         return False

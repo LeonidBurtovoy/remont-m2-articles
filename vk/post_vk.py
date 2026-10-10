@@ -126,23 +126,47 @@ def upload_file(url, field, path):
         return json.loads(r.read().decode())
 
 
-def upload_photos(token, group_id, paths):
+def media_token():
+    """Ключ для загрузки фотографий.
+
+    photos.getWallUploadServer недоступен ключу сообщества: ВК отвечает ошибкой 27
+    «method is unavailable with group auth» независимо от выданных прав. Нужен
+    токен пользователя-администратора со scope photos,wall,groups,offline.
+    """
+    return os.environ.get("VK_USER_TOKEN", "").strip()
+
+
+def upload_photos(group_id, paths):
+    token = media_token()
+    if not token:
+        raise RuntimeError(
+            "не задан VK_USER_TOKEN — ключ сообщества не имеет права загружать фото "
+            "(ошибка ВК 27). Нужен токен пользователя со scope photos,wall,groups,offline")
     attachments = []
     for p in paths:
         srv = vk("photos.getWallUploadServer", token, group_id=group_id)
         up = upload_file(srv["upload_url"], "photo", p)
-        saved = vk("photos.saveWallPhoto", token, group_id=group_id, photo=up["photo"], server=up["server"], hash=up["hash"])
+        saved = vk("photos.saveWallPhoto", token, group_id=group_id, photo=up["photo"],
+                   server=up["server"], hash=up["hash"])
         attachments.append(f"photo{saved[0]['owner_id']}_{saved[0]['id']}")
     return attachments
 
 
 def already_posted(token, group_id, title):
-    try:
-        posts = vk("wall.get", token, owner_id=-group_id, count=15)["items"]
-    except Exception as e:  # noqa: BLE001
-        print(f"Проверка дублей пропущена: {e}")
-        return False
-    return any(p.get("text", "").startswith(title) for p in posts)
+    # wall.get ключу сообщества тоже недоступен — читаем стену пользовательским,
+    # если он есть, иначе проверку честно пропускаем.
+    last = "нет доступного ключа"
+    for t in (media_token(), token):
+        if not t:
+            continue
+        try:
+            posts = vk("wall.get", t, owner_id=-group_id, count=15)["items"]
+        except Exception as e:  # noqa: BLE001
+            last = e
+            continue
+        return any(p.get("text", "").startswith(title) for p in posts)
+    print(f"Проверка дублей пропущена: {last}")
+    return False
 
 
 def main():
@@ -179,16 +203,20 @@ def main():
         g = vk("groups.getById", token, group_id=group_id)
         g = g["groups"][0] if isinstance(g, dict) and "groups" in g else g[0]
         print(f"Сообщество: {g.get('name')} (id {group_id})")
-        try:
-            vk("wall.get", token, owner_id=-group_id, count=1)
-            print("Чтение стены: OK")
-        except Exception as e:  # noqa: BLE001
-            print(f"Чтение стены: {e}")
-        try:
-            vk("photos.getWallUploadServer", token, group_id=group_id)
-            print("Загрузка фото: OK — картинки будут прикрепляться к постам")
-        except Exception as e:  # noqa: BLE001
-            print(f"Загрузка фото: недоступна ({e}) — посты будут выходить без картинок")
+        user = media_token()
+        print(f"VK_USER_TOKEN: {'задан' if user else 'НЕ ЗАДАН — картинок не будет'}")
+        for label, t in (("ключ сообщества", token), ("токен пользователя", user)):
+            if not t:
+                continue
+            for method, params in (("wall.get", {"owner_id": -group_id, "count": 1}),
+                                   ("photos.getWallUploadServer", {"group_id": group_id})):
+                try:
+                    vk(method, t, **params)
+                    print(f"  {label:<20} {method:<28} OK")
+                except Exception as e:  # noqa: BLE001
+                    print(f"  {label:<20} {method:<28} {e}")
+        print("Картинки прикрепятся, если photos.getWallUploadServer проходит "
+              "хотя бы одним ключом.")
         return
 
     if not args.force and already_posted(token, group_id, title):
@@ -202,7 +230,7 @@ def main():
             note = f"нет файлов картинок: {missing}"
         else:
             try:
-                attachments = upload_photos(token, group_id, photos)
+                attachments = upload_photos(group_id, photos)
             except Exception as e:  # noqa: BLE001
                 note = str(e)
 
