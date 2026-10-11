@@ -26,7 +26,7 @@
 
 - `VK_TOKEN` — ключ сообщества, им публикуется сам пост;
 - `VK_GROUP_ID` — числовой id сообщества;
-- `VK_USER_TOKEN` — токен пользователя-администратора со scope `photos,wall,groups,offline`.
+- `VK_USER_TOKEN` — токен пользователя-администратора со scope `photos,video,wall,groups,offline`.
 
 Третий обязателен для картинок и роликов: ключу сообщества ВКонтакте отказывает в
 `photos.getWallUploadServer` и `wall.get` с ошибкой 27 «method is unavailable with

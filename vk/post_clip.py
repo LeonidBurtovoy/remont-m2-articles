@@ -140,7 +140,7 @@ def publish(token, group_id, number, force=False, video_only=False):
     title = article_title(number)
     path = clip_path(number)
     if not os.path.exists(path):
-        raise SystemExit(f"Нет файла ролика: {path}")
+        raise RuntimeError(f"нет файла ролика: {path}")
     if not force and already_posted(token, group_id, title):
         print(f"RESULT: пропуск — ролик №{number} «{title}» уже загружен")
         return
@@ -165,7 +165,7 @@ def publish(token, group_id, number, force=False, video_only=False):
         except Exception as e:  # noqa: BLE001
             last_error = str(e)
             print(f"Через {label} не вышло: {e}")
-    raise SystemExit(f"Не удалось загрузить ролик: {last_error}")
+    raise RuntimeError(f"не удалось загрузить ролик: {last_error}")
 
 
 def main():

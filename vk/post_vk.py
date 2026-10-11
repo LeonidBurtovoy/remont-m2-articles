@@ -243,12 +243,14 @@ def main():
     print(f"RESULT: опубликована статья №{number} «{title}» {where}")
     print(f"Ссылка: https://vk.com/wall-{group_id}_{post_id}")
 
-    # ролик того же номера — отдельным шагом: пост уже опубликован, и его неудача не отменяет
+    # Ролик того же номера — отдельным шагом: пост уже опубликован, и его неудача
+    # не должна ронять запуск. Ловим и SystemExit: publish() бросает именно его,
+    # а SystemExit не наследуется от Exception и мимо обычного except проходит.
     if not args.no_clip:
         try:
             import post_clip
             post_clip.publish(token, group_id, number, force=args.force)
-        except Exception as e:  # noqa: BLE001
+        except (Exception, SystemExit) as e:  # noqa: BLE001
             print(f"Ролик не загрузился: {e}")
 
 
